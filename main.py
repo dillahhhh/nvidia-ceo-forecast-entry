@@ -53,6 +53,10 @@ exactly: loss 0.363589, median error 0.767503, coverage 0.949642):
   'forecasts' key, one row per market, 240 rows x 5 quantiles, all in
   [0,1], non-decreasing, outputs 210-270 KB (< 1 MB), ~0.12 s/case
   (limit 8 s/case), two runs byte-identical.
+  Edge cases (test_edge_v3.py): single-price, two-price, flat history,
+  one huge jump (0.01 -> 0.90), checkpoint sum 0.24, markets at exactly
+  0.0 and 1.0, 5-price history, empty price list — all produce valid
+  output without crashing, including end-to-end via the CLI.
 
 Standard library only. Deterministic: no randomness, no time, no network.
 Reads $MAKEFUN_INPUT_DIR (else /input/), writes $MAKEFUN_OUTPUT_DIR (else
