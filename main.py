@@ -49,6 +49,10 @@ exactly: loss 0.363589, median error 0.767503, coverage 0.949642):
   artefact. The ensemble sits exactly at the live prize boundary (#100
   ~0.243); it is the best model found after ~25 ideas across 10 tuning
   stages. Top 3 (live ~0.213-0.219) is out of reach of every method tried.
+  Format validation (validate_v3.py): all 6 cases pass — exactly one
+  'forecasts' key, one row per market, 240 rows x 5 quantiles, all in
+  [0,1], non-decreasing, outputs 210-270 KB (< 1 MB), ~0.12 s/case
+  (limit 8 s/case), two runs byte-identical.
 
 Standard library only. Deterministic: no randomness, no time, no network.
 Reads $MAKEFUN_INPUT_DIR (else /input/), writes $MAKEFUN_OUTPUT_DIR (else
