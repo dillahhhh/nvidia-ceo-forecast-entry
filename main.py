@@ -7,8 +7,10 @@ Model: per-market volatility-scaled persistence with fat outer tails.
     and made the median worse: the price is (locally) a martingale.
   - Spread: each market gets its own 1-minute volatility sigma, the standard
     deviation of its 1-minute price changes over the last 120 minutes,
-    capped at 0.008 (a longer window is poisoned by rare one-off repricing
-    jumps; the cap stops a jump inside the window from blowing the spread up).
+    floored at 0.0006 and capped at 0.008. A longer window is poisoned by
+    rare one-off repricing jumps; the cap stops a jump inside the window
+    from blowing the spread up, and the floor stops a market that sat still
+    for two hours from being caught flat-footed by the next jump.
   - The spread grows like h**0.35, not sqrt(h): over 4 hours the prices are
     far stickier than a random walk (mean-reverting / bounded), so a
     square-root spread is far too wide at long horizons.
@@ -23,7 +25,7 @@ Model: per-market volatility-scaled persistence with fat outer tails.
 
 Practice backtest (local scorer, validated to reproduce the house baseline
 exactly: loss 0.363589, median error 0.767503, coverage 0.949642):
-  this entry: loss 0.2707, median error 0.7675, 90% coverage 0.7814
+  this entry: loss 0.2663, median error 0.7675, 90% coverage 0.9073
   (house baseline 0.3636; best leaderboard title claims 0.266).
 
 Standard library only. Deterministic: no randomness, no time, no network.
@@ -37,15 +39,24 @@ import os
 
 # --- tuned parameters (see docstring) ---
 SIGMA_WINDOW = 120        # minutes of 1-min changes for the per-market sigma
+SIGMA_MIN = 0.0006        # floor on sigma: a market that sat still for 2h can still jump
 SIGMA_CAP = 0.008         # cap on sigma (price units per sqrt-minute)
 ALPHA = 0.35              # spread grows like h ** ALPHA
 K = (-1.6448536269514722 * 1.4, -0.6744897501960817, 0.0,
      0.6744897501960817, 1.6448536269514722 * 1.4)
 HORIZON = 240
 
+# h ** ALPHA is the same for every market: compute once, reuse (also keeps
+# run_ms down, which breaks exact-loss ties in our favour).
+POWERS = [h ** ALPHA for h in range(1, HORIZON + 1)]
+
 
 def forecast_market(prices):
     """Return the 240 x 5 quantile rows for one market."""
+    if not prices:
+        # Defensive: the format guarantees >= 1 price, but never crash the
+        # whole case over one market; a flat 0.5 keeps the other markets valid.
+        return [[0.5] * 5 for _ in range(HORIZON)]
     x = prices[-1]
     n = len(prices)
     w = min(SIGMA_WINDOW, n - 1)
@@ -56,11 +67,13 @@ def forecast_market(prices):
         mean = sum(tail[i + 1] - tail[i] for i in range(w)) / w
         var = sum((tail[i + 1] - tail[i] - mean) ** 2 for i in range(w)) / w
         sigma = math.sqrt(var) if var > 0.0 else 0.0
+    if sigma < SIGMA_MIN:
+        sigma = SIGMA_MIN
     if sigma > SIGMA_CAP:
         sigma = SIGMA_CAP
     rows = []
     for h in range(1, HORIZON + 1):
-        s = sigma * (h ** ALPHA)
+        s = sigma * POWERS[h - 1]
         row = []
         for k in K:
             q = x + k * s
