@@ -36,10 +36,11 @@ exactly: loss 0.363589, median error 0.767503, coverage 0.949642):
   p04 0.2019, p05 0.1141. Coverage 0.88 is inside the range of ranked
   prize-eligible entries on the live board (#2 sits at 0.883, #9 at 0.830),
   so the narrower outer tail costs no eligibility.
-  LOOCV (leave-one-case-out): 0.2226-0.2767, better than the plain
-  persistence entry on all six folds — the sum-reversion signal is
-  robust, not a single-case artefact. The gamma optimum is broad
-  (0.45-0.6 all ~0.248), so the tuning is not knife-edge.
+  LOOCV (leave-one-case-out): p00 0.2226, p01 0.2380, p02 0.2370,
+  p03 0.2484, p04 0.2564, p05 0.2767 — better than the plain persistence
+  entry on all six folds, so the sum-reversion signal is robust, not a
+  single-case artefact. The gamma optimum is broad (0.45-0.6 all ~0.248),
+  so the tuning is not knife-edge.
 
 Standard library only. Deterministic: no randomness, no time, no network.
 Reads $MAKEFUN_INPUT_DIR (else /input/), writes $MAKEFUN_OUTPUT_DIR (else
@@ -68,6 +69,10 @@ HORIZON = 240
 # h ** ALPHA is the same for every market: compute once, reuse (also keeps
 # run_ms down, which breaks exact-loss ties in our favour).
 POWERS = [h ** ALPHA for h in range(1, HORIZON + 1)]
+# Precomputed (multiplier, uses_outer_spread) pairs: avoids a membership
+# test per cell and keeps run_ms down further.
+K_PAIRS = ((K[0], True), (K[1], False), (K[2], False), (K[3], False),
+           (K[4], True))
 POWERS_OUTER = [h ** ALPHA_OUTER for h in range(1, HORIZON + 1)]
 GB_GROWTH = [1.0 - math.exp(-h / GB_TAU) for h in range(1, HORIZON + 1)]
 
@@ -85,8 +90,7 @@ def forecast_market(prices):
     if len(ch) < 2:
         sigma = 0.0
     else:
-        tail = [c if -SIGMA_CLIP <= c <= SIGMA_CLIP else
-                (-SIGMA_CLIP if c < 0 else SIGMA_CLIP) for c in ch]
+        tail = [min(SIGMA_CLIP, max(-SIGMA_CLIP, c)) for c in ch]
         mean = sum(tail) / len(tail)
         var = sum((c - mean) ** 2 for c in tail) / len(tail)
         sigma = math.sqrt(var) if var > 0.0 else 0.0
@@ -106,8 +110,8 @@ def forecast_market(prices):
         so = sigma * POWERS_OUTER[h - 1]
         base = x - GB_R * gb_d * GB_GROWTH[h - 1]
         row = []
-        for j, k in enumerate(K):
-            ss = so if j in (0, 4) else s
+        for k, outer in K_PAIRS:
+            ss = so if outer else s
             q = base + k * ss
             if q < 0.0:
                 q = 0.0
